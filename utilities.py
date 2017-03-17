@@ -28,13 +28,19 @@ class ParticleOptions():
 
 class RunOptions():
 	def __init__(self,PrimBox = 5.7064, timestep = 0.01e-12/tunit, 
-			repeat = 3, XYZfile = "", nsteps = 20):
+			repeat = 3, XYZfile = "", nsteps = 20, ratioA = 1,ratioB = 0,
+			partAName = "", partBName = "", NHQ = 16*arMass):
 		self._PrimBox = PrimBox
 		self._timestep = timestep
 		self._repeat = repeat
 		self._XYZfile = XYZfile
 		self._nsteps = nsteps
 		self._Lbox = PrimBox*repeat
+		self._ratioA = ratioA
+		self._ratioB = ratioB
+		self._particleAName = partAName
+		self._particleBName = partBName
+		self._NHQ    = NHQ
 		print(('RunOptions: PrimBox = {}, TimeStep = {}, Repeat = {}, '+
 							'XYZfile = {}, nSteps = {}, Lbox = {}').format(PrimBox,timestep,
 							repeat,XYZfile,nsteps,self._Lbox))
