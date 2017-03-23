@@ -14,7 +14,8 @@ evk   = e/kB                  # Conversion factor from eV to K
 kjmol = e*NA/1e3              # Conversion factor from eV to kJ/mol
 tunit = 1.01805058e-14        # Unit of time in a.m.u, eV, A units system
 PrimBox = 6.101
-
+#5.7064
+#
 arMass = 39.948			   # Mass of Ar atom in a.m.u
 arEpsilon_k = 119.8
 arSigma = 3.405
@@ -33,13 +34,17 @@ primfrac = [
 			[0.0,  0.5,  0.5],
 			[0.5,  0.0,  0.5],
 			[0.5,  0.5,  0.0]]
-			
-class ParticleOptions():
+
+particleAIndex = []
+particleBIndex = []
+
+cdef class ParticleOptions:
+	cdef public float _epsilon_k
+	cdef public float _epsilon
+	cdef public float _sigma
+	cdef public float _mass
+	cdef public str _name
 	def __init__(self,name = "Ar"):
-		self._epsilon_k = 0
-		self._epsilon = 0
-		self._sigma = 0
-		self._mass = 0
 		self._name = name
 		if self._name == "Ar":
 			self._sigma = arSigma
@@ -60,7 +65,18 @@ class ParticleOptions():
 	 		self._name,self._sigma,self._epsilon_k,self._mass))
 	 																								
 
-class RunOptions():
+cdef class RunOptions:
+	cdef public float _PrimBox
+	cdef public float _timestep
+	cdef public int _repeat
+	cdef public str _XYZfile
+	cdef public int _nsteps
+	cdef public float _Lbox
+	cdef public float _ratioA
+	cdef public float _ratioB
+	cdef public str _particleAName
+	cdef public str _particleBName
+	cdef public float _NHQ
 	def __init__(self,PrimBox = 5.7064, timestep = 0.01e-12/tunit, 
 			repeat = 3, XYZfile = "", nsteps = 20, ratioA = 1,ratioB = 0,
 			partAName = "", partBName = "", NHQ = 16*arMass):
@@ -76,10 +92,14 @@ class RunOptions():
 		self._particleBName = partBName
 		self._NHQ    = NHQ
 		print(('RunOptions: PrimBox = {}, TimeStep = {}, Repeat = {}, '+
-							'XYZfile = {}, nSteps = {}, Lbox = {}').format(PrimBox,timestep,
-							repeat,XYZfile,nsteps,self._Lbox))
+							'XYZfile = {}, nSteps = {}, Lbox = {}').format(self._PrimBox,self._timestep,
+							self._repeat,self._XYZfile,self._nsteps,self._Lbox))
 		
-class Particle():
+cdef class Particle:
+	cdef public float _mass
+	cdef public float _sigma
+	cdef public float _epsilon
+	cdef public str _name
 	def __init__(self,mass,sigma,epsilon,name = ""):
 		self._mass = mass
 		self._sigma = sigma
@@ -87,7 +107,7 @@ class Particle():
 		self._name = name
 
 def GenerateSupercell(runOptions,particleOptionsA,
-																	particleOptionsB = None,ratioA = 1, ratioB = 0):
+																	particleOptionsB = None,ratioA = 1, ratioB = 0, uniformDistribution = False):
 	coords = []
 	if particleOptionsB == None:
 		particleOptionsB = particleOptionsA
@@ -99,6 +119,7 @@ def GenerateSupercell(runOptions,particleOptionsA,
 	xorigin = 0
 	mass,sigma,epsilon,name = 0,0,0,""
 	totParticles = repeat**3 * len(primfrac)
+	totA = float (ratioA)/(ratioA+ratioB)*totParticles
 	swapIndex = 0
 	swapEvery = ratioA
 	typeA = True
@@ -109,23 +130,31 @@ def GenerateSupercell(runOptions,particleOptionsA,
 			for k in range(repeat) :
 				ncell = ncell + 1
 				for w in range(len(primfrac)):
-					if swapIndex>=swapEvery and not ratioB==0:
-						typeA = not typeA
-						swapIndex = 0
-						if typeA or ratioB==0:
-							swapEvery = ratioA
-						else:
-							swapEvery = ratioB
+					if uniformDistribution:
+						#if uniformDistribution, switch between A and B every swapEvery times
+						if swapIndex>=swapEvery and not ratioB==0:
+							typeA = not typeA
+							swapIndex = 0
+							if typeA or ratioB==0:
+								swapEvery = ratioA
+							else:
+								swapEvery = ratioB
+					else:
+						#if not, 
+						if n>=totA:
+							typeA = False
 					if typeA:
 						name = particleOptionsA._name
 						mass = particleOptionsA._mass
 						sigma = particleOptionsA._sigma
 						epsilon = particleOptionsA._epsilon
+						particleAIndex.append(n)
 					else:
 						name = particleOptionsB._name
 						mass = particleOptionsB._mass
 						sigma = particleOptionsB._sigma
 						epsilon = particleOptionsB._epsilon
+						particleBIndex.append(n)
 					xcoord = PrimBox*primfrac[w][0] + xorigin
 					ycoord = PrimBox*primfrac[w][1] + yorigin
 					zcoord = PrimBox*primfrac[w][2] + zorigin
@@ -140,7 +169,6 @@ def GenerateSupercell(runOptions,particleOptionsA,
 	nA = 0
 	nB = 0		
 	for i in range(n):
-		#print(i,particles[i]._name)
 		if particles[i]._name == particleOptionsA._name:
 			nA+=1
 		else:
@@ -171,10 +199,14 @@ cpdef LJ_Energy(list coords,list particles, Lbox) :
 	cdef float dist_sq = 0.0
 	cdef float rcomp = 0.0
 	cdef float force = 0.0
+	cdef Particle particlei
+	cdef Particle particlej
 	for i in range(n) :
+		particlei = particles[i]
 		for j in range(i+1,n):
-			sigma = (particles[i]._sigma + particles[j]._sigma)/2.0
-			epsilon = math.sqrt(particles[i]._epsilon*particles[j]._epsilon)
+			particlej = particles[j]
+			sigma = (particlei._sigma + particlej._sigma)/2.0
+			epsilon = math.sqrt(particlei._epsilon*particlej._epsilon)
 			dist_sq = 0.0
 			for k in range(3) :
 				rcomp = coords[j][k] - coords[i][k]
@@ -198,10 +230,18 @@ cpdef VVerlet_NH_Step_1(float timestep,list particles,float NHQ,float kBT,float 
 	n = len(coords)
 	cdef list coords_t_plus = [ [0,0,0] for i in range(0, n)]
 	cdef list velocities_t_half = [ [0,0,0] for i in range(0, n)]
+	cdef Particle particlei
+	cdef float coord
+	cdef float veloc
+	cdef float force
 	for i in range(n) :
+		particlei = particles[i]
 		for k in range(3) :
-			coords_t_plus[i][k] = coords[i][k] + timestep*velocities[i][k] + timestep**2*(forces[i][k] - zeta*velocities[i][k])/(2.0*particles[i]._mass)
-			velocities_t_half[i][k] = velocities[i][k] + timestep*(forces[i][k] - zeta*velocities[i][k])/(2.0*particles[i]._mass)
+			coord = coords[i][k]
+			veloc = velocities[i][k]
+			force = forces[i][k]
+			coords_t_plus[i][k] = coord + timestep*veloc + timestep**2*(force - zeta*veloc)/(2.0*particlei._mass)
+			velocities_t_half[i][k] = veloc + timestep*(force - zeta*veloc)/(2.0*particlei._mass)
 
 	zeta_t_half = zeta + timestep/(2.0*NHQ)*(KE - (3*n)*kBT/2.0)
 	lns_t_plus = lns + timestep*zeta_t_half + timestep**2/NHQ*(KE - (3*n)*kBT/2.0)
@@ -211,12 +251,18 @@ cpdef VVerlet_NH_Step_1(float timestep,list particles,float NHQ,float kBT,float 
 # Step the atomic co-ordinates and Nose-Hoover variables using the Velocity Verlet algorithm
 # An approximate scheme is used for the second velocity half-step.
 #
-cpdef VVerlet_NH_Step_2(float timestep, list particles,float NHQ,float kBT,float KE,list velocities,list forces_t_plus,float zeta) :
+cdef VVerlet_NH_Step_2(float timestep, list particles,float NHQ,float kBT,float KE,list velocities,list forces_t_plus,float zeta) :
 	n = len(velocities)
 	cdef list velocities_t_plus = [ [0,0,0] for i in range(0, n)]
+	cdef Particle particlei
+	cdef float veloc
+	cdef float force
 	for i in range(n) :
+		particlei = particles[i]
 		for k in range(3) :
-			velocities_t_plus[i][k] = (velocities[i][k] + timestep*forces_t_plus[i][k]/(2.0*particles[i]._mass)) \
+			veloc = velocities[i][k]
+			force = forces_t_plus[i][k]
+			velocities_t_plus[i][k] = (veloc + timestep*force/(2.0*particlei._mass)) \
 										/ (1 + (timestep*zeta/2.0))
 
 
@@ -226,11 +272,13 @@ cpdef VVerlet_NH_Step_2(float timestep, list particles,float NHQ,float kBT,float
 #
 # Compute the instantaneous kinetic energy from the velocities
 #
-cpdef Kinetic_Energy(list particles,list velocity) :
+cdef float Kinetic_Energy(list particles,list velocity) :
 	n = len(velocity)
-	Energy = 0.0
+	cdef float Energy = 0.0
+	cdef Particle particlei
 	for i in range(n) :
-		Energy += 0.5*particles[i]._mass*(velocity[i][0]**2 + velocity[i][1]**2 + velocity[i][2]**2)	
+		particlei = particles[i]
+		Energy += 0.5*particlei._mass*(velocity[i][0]**2 + velocity[i][1]**2 + velocity[i][2]**2)	
 	return Energy
 		
 cpdef getVACF(list velocity_t,list velocity_t0):
@@ -239,7 +287,6 @@ cpdef getVACF(list velocity_t,list velocity_t0):
 	cdef float magT0 = 0.0
 	cdef float vacf = 0.0
 	cdef float vacfI = 0.0
-	
 	cdef float veloct = 0.0
 	cdef float veloc0 = 0.0
 	for i in range(n):
@@ -259,18 +306,36 @@ cpdef getVACF(list velocity_t,list velocity_t0):
 	return vacf
 	
 def getMSD(list coords_t,list coords_t0):
+	cdef float msdAB = 0.0
+	cdef float msdA = 0.0
+	cdef float msdB = 0.0
+	cdef float coordt = 0
+	cdef float coordt0 = 0
 	n = len(coords_t0)
-	msd = 0.0
-	coordt,coordt0 = 0,0
 	for i in range(n):
-		msdI = 0.0
 		for k in range(3):
 			coordt = coords_t[i][k]
 			coordt0 = coords_t0[i][k]
-			msdI+=(coordt0-coordt)**2
-		msd += msdI
-	msd/=n
-	return msd
+			msdAB+=(coordt0-coordt)**2
+	msdAB/=n
+	
+	n = len(particleAIndex)
+	for i in particleAIndex:
+		for k in range(3):
+			coordt = coords_t[i][k]
+			coordt0 = coords_t0[i][k]
+			msdA+=(coordt0-coordt)**2
+	msdA/=n
+	
+	n = len(particleBIndex)
+	for i in particleBIndex:
+		for k in range(3):
+			coordt = coords_t[i][k]
+			coordt0 = coords_t0[i][k]
+			msdB+=(coordt0-coordt)**2
+	msdB/=n
+	
+	return msdAB,msdA,msdB
 	
 def Accumulate_RDF(list coords, Lbox, histogram):
 	n = len(coords)
@@ -289,26 +354,44 @@ def Accumulate_RDF(list coords, Lbox, histogram):
 					except:
 						print "RDF Error - r=", math.sqrt(dist_sq),",	bin=", bin
 
-def Partial_RDF(coords, particles,Lbox, histogram,fromAtom, toAtom):
+cdef Partial_RDF(list coords,list particles,float Lbox,list histogram,fromAtom,toAtom):
+	
 	n = len(coords)
 	nbins = len(histogram)
-	increment = 0.5
-	for i in range(n) :
-		if particles[i]._name == fromAtom:
-			for j in range(n):
-				if not i==j:
-					if particles[j]._name == toAtom:
-						dist_sq = 0.0
-						for k in range(3) :
-							rcomp = coords[j][k] - coords[i][k]
-							rcomp = rcomp - Lbox*((rcomp/Lbox+0.5)//1)
-							dist_sq += rcomp**2
-						if( dist_sq < Lbox**2/4.0 ) :
-							bin = int(math.sqrt(4.0*dist_sq/Lbox**2) * nbins)
-							try:
-								histogram[bin] += increment
-							except:
-								print "RDF Error - r=", math.sqrt(dist_sq),",	bin=", bin
+	cdef float rcomp = 0
+	cdef float dist_sq
+	particleFromList,particleToList = [],[]
+	if fromAtom=="A":
+		particleFromList = particleAIndex
+	else:
+		particleFromList = particleBIndex
+		
+	if toAtom=="A":
+		particleToList = particleAIndex
+	else:
+		particleToList = particleBIndex
+
+	startingFrom = 0
+	boolean = (fromAtom==toAtom)
+	cdef int fromIndex,toIndex	
+	for i in range(len(particleFromList)) :
+		fromIndex = particleFromList[i]
+		startingFrom = 0
+		if boolean:
+			startingFrom = i+1
+		for j in range(startingFrom,len(particleToList)):
+			toIndex = particleToList[j]
+			dist_sq = 0.0
+			for k in range(3) :
+				rcomp = coords[toIndex][k] - coords[fromIndex][k]
+				rcomp = rcomp - Lbox*((rcomp/Lbox+0.5)//1)
+				dist_sq += rcomp**2
+			if( dist_sq < Lbox**2/4.0 ) :
+				bin = int(math.sqrt(4.0*dist_sq/Lbox**2) * nbins)
+				try:
+					histogram[bin] += 1
+				except:
+					print "RDF Error - r=", math.sqrt(dist_sq),",	bin=", bin
 
 
 def Calculate_RDF(n, Lbox, histogram,fileh) :
@@ -347,8 +430,8 @@ def Calculate_Partial_RDF(n, options, nA,nB,t,nSteps,histogram,fileh) :
 	fileh.close()
 		
 def MD_Loop(coords,velocity,particles,options,kBT) :
-	print '# {0:4s}\t{1:12s}\t{2:12s}\t{3:9s}\t{4:9s}\t{5:12s}\t{6:6s}\t{7:4s}\t{8:3s}'.format("Step",
-           "Pot.Energy","Kin.Energy","NHzeta","s","Tot.Energy","T(Inst)","VACF","MSD")
+	print '# {0:4s}\t{1:12s}\t{2:12s}\t{3:9s}\t{4:9s}\t{5:12s}\t{6:6s}\t{7:4s}\t{8:3s}\t{9:3s}'.format("Step",
+           "Pot.Energy","Kin.Energy","NHzeta","s","Tot.Energy","T(Inst)","MSD_AB","MSD_A","MSD_B")
 	n = len(coords)
 	nbins = 150
 	gr_histogram = [ 0 for i in range(nbins+1)]	
@@ -380,8 +463,8 @@ def MD_Loop(coords,velocity,particles,options,kBT) :
 	if XYZfile != "":
 		XYZfile = "../" + folderName + "/" + XYZfile
 		XYZfh = open(XYZfile,'w')
-		XYZfh.write('# {0:4s}\t{1:12s}\t{2:12s}\t{3:9s}\t{4:9s}\t{5:12s}\t{6:6s}\t{7:4s}\t{8:3s}\n'.format("Step",
-           "Pot.Energy","Kin.Energy","NHzeta","s","Tot.Energy","T(Inst)","VACF","MSD"))
+		XYZfh.write('# {0:4s}\t{1:12s}\t{2:12s}\t{3:9s}\t{4:9s}\t{5:12s}\t{6:6s}\t{7:4s}\t{8:3s}\t{9:3s}\n'.format("Step",
+           "Pot.Energy","Kin.Energy","NHzeta","s","Tot.Energy","T(Inst)","MSD_AB","MSD_A","MSD_B"))
 	###############################################	
 	zeta = 0
 	lns = 0
@@ -404,32 +487,30 @@ def MD_Loop(coords,velocity,particles,options,kBT) :
 		Tot_Energy = Pot_Energy + Kin_Energy + 0.5*NHQ*zeta**2 + (3*n)*kBT*math.exp(lns)
 		
 		if istep%5==0:
-			Partial_RDF(coords, particles,Lbox, gr_aa_histogram,nameA, nameA)
-			Partial_RDF(coords, particles,Lbox, gr_ab_histogram,nameA, nameB)
-			Partial_RDF(coords, particles,Lbox, gr_bb_histogram,nameB, nameB)
-			msd = getMSD(coords,coords_t0)
-			vacf = getVACF(velocity,velocity_t0)
-			print '{0:4d}\t{1:12.7f}\t{2:12.7f}\t{3:9.6f}\t{4:9.6f}\t{5:12.7f}\t{6:6.2f}\t{7:1.6f}\t{8:1.6f}'.format(istep,
-			Pot_Energy,Kin_Energy, zeta, math.exp(lns), Tot_Energy,T_Inst,vacf,msd)
+			Partial_RDF(coords, particles,Lbox, gr_aa_histogram,"A", "A")
+			Partial_RDF(coords, particles,Lbox, gr_ab_histogram,"A", "B")
+			Partial_RDF(coords, particles,Lbox, gr_bb_histogram,"B", "B")
+			msdAB,msdA,msdB = getMSD(coords,coords_t0)
+			print '{0:4d}\t{1:12.7f}\t{2:12.7f}\t{3:9.6f}\t{4:9.6f}\t{5:12.7f}\t{6:6.2f}\t{7:1.6f}\t{8:4.6f}\t{9:4.6f}'.format(istep,
+			Pot_Energy,Kin_Energy, zeta, math.exp(lns), Tot_Energy,T_Inst,msdAB,msdA,msdB)
 			if XYZfile != "":
-				XYZfh.write( '{0:4d}\t{1:12.7f}\t{2:12.7f}\t{3:9.6f}\t{4:9.6f}\t{5:12.7f}\t{6:6.2f}\t{7:1.6f}\t{8:1.6f}\n'.format(istep,
-			Pot_Energy,Kin_Energy, zeta, math.exp(lns), Tot_Energy,T_Inst,vacf,msd))
+				XYZfh.write( '{0:4d}\t{1:12.7f}\t{2:12.7f}\t{3:9.6f}\t{4:9.6f}\t{5:12.7f}\t{6:6.2f}\t{7:4.6f}\t{8:4.6f}\t{9:4.6f}\n'.format(istep,
+			Pot_Energy,Kin_Energy, zeta, math.exp(lns), Tot_Energy,T_Inst,msdAB,msdA,msdB))
 	
 	if XYZfile != "":
 		XYZfh.close()
-	Calculate_Partial_RDF(n, options, nA,nB,nsteps*timestep,nsteps,gr_aa_histogram,'../{}/grAA.dat'.format(folderName))
+	Calculate_Partial_RDF(n, options, nA,nA,nsteps*timestep,nsteps,gr_aa_histogram,'../{}/grAA.dat'.format(folderName))
 	Calculate_Partial_RDF(n, options, nA,nB,nsteps*timestep,nsteps,gr_ab_histogram,'../{}/grAB.dat'.format(folderName))
-	Calculate_Partial_RDF(n, options, nA,nB,nsteps*timestep,nsteps,gr_bb_histogram,'../{}/grBB.dat'.format(folderName))
+	Calculate_Partial_RDF(n, options, nB,nB,nsteps*timestep,nsteps,gr_bb_histogram,'../{}/grBB.dat'.format(folderName))
 	
 
 def run():
 	###############################################################
-	PrimBox = 5.7064
 	timestep = 0.01e-12/tunit
 	initial_temperature = 115.8
 	repeat = 4
 	XYZfile = "data.dat"
-	nsteps = 10000
+	nsteps = 50000
 	###############################################################
 	ratioA = 1
 	ratioB = 1
