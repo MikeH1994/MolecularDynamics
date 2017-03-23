@@ -44,17 +44,15 @@
 
 \section{Introduction}
 
-The aim of this practical was to extend the functionality of a molecular dynamics program, written in python, named `pymold'. This extended version was then used to simulate a binary mixture of argon and krypton under similar conditions to the paper `Structure and diffusion in mixtures of rare-gas liquids' by G. Jacucci and I.R. McDonald 
+The aim of this practical was to extend the functionality of a molecular dynamics program, written in python, named `pymold'. This extended version was then used to simulate a binary mixture of argon and krypton under similar conditions to \cite{StructureAndDiffusion}. This report covers the work done to extend pymold as well as the results obtained from the simulation, as well as the comparison to the results listed in \cite{StructureAndDiffusion} by G. Jacucci and I.R. McDonald.
 
 \section{Pymold}
-The project was based around a preexisting molecular dynamics program, that simulated the interactions between atoms in a system, tracking their positions as they varied through time. The program, written in Python \cite{TODO}, performed a number of calculations on the
-
-
-\subsection{Extension to Pymold}
-
+The project was based around preexisting molecular dynamics code, that simulated the Lennard-Jones interactions between atoms in a system, using the Nose-Hoover thermostat. This section covers the extensions made to the code before 
 
 \subsubsection{Binary Mixtures}
-Pymold was first extended to perform molecular dynamics simulations on binary mixtures of Lennard-Jones atoms. As these atoms may have different Lennard-Jones parameters, the effective values of $\sigma$ and $\epsilon$ when evaluating the LJ function are given by the Lorentz-Berthelot mixing rules
+Pymold was first extended to perform molecular dynamics simulations on binary mixtures of Lennard-Jones atoms. The different chemical species were initially separated in order to more easily determine when the memory of the initial configuration has been lost.
+
+As different chemical species have different Lennard-Jones parameters, the resultant values of $\sigma$ and $\epsilon$ when evaluating the LJ function are given by the Lorentz-Berthelot mixing rules
 
 \begin{equation}
 \sigma_{ij} = \frac{\sigma_{ii} + \sigma_{jj}}{2},
@@ -80,12 +78,10 @@ Krypton	& $83.798$ & $167.0$ & $3.633$ \\
 \hline
 \end{tabular}
 \end{table}
-
-
  
 \begin{table}[h!t]
 \centering
-\caption{ }
+\caption{ The potential energy and instantaneous temperature are listed for 108 argon atoms starting at $84\,K$ the original edited versions of pymold, when using the same pseudo-random number seed. It can be seen that the same output is generated for both cases. \label{table:sameSeed}}
 \begin{tabular}{|c|c|c|c|c|c|c| } 
 \hline
 Step & Original Pot.Energy ($eV$)& Pot.Energy ($eV$) & Original $T_{\rm{Inst}}$ ($K$) & $T_{\rm{Inst}}$ ($K$)
@@ -109,6 +105,23 @@ $75$ & $-6.5214771$ & $-6.5214771$ & $102.06$ & $102.06$ \\
 $80$ & $-6.5230946$ & $-6.5230946$ & $120.2$ & $120.2$ \\\hline
 \end{tabular}
 \end{table} 
+
+It is seen in Table \ref{table:sameSeed} that when both the original and extended versions of pymold use the same random number seed, the same output is generated. 
+
+The Nose-Hoover energy function is given by the equation
+\begin{equation}
+H_{\rm{Nose}} = \sum_{i}\frac{p'^2}{2m_i} + U(\{x_i\}) + \frac{Q\zeta^2}{2} + gk_{\rm{B}}Ts,
+\end{equation}
+ 
+where $\zeta = \dot{s}/s$ and $g$ is the number of degrees of freedom, $3N$. $Q$ here is the fictitious Nose-Hoover mass parameter, which is set to $16$ times the mass of an argon atom by default. The timestep in the Nose-Hoover thermostat scales as $\Delta t' = \Delta t/s$. $s$ is an additional degree of freedom introduced in the Nose Hamiltonian. 
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[scale=0.3]{../figures/NoseHoover.png}
+    \caption{The Nose-Hoover energy function is plotted. It can be seen that the average total energy is constant, with random fluctuations due to the dynamics of the Nose-Hoover thermostat. \label{fig:NoseHoover}}
+\end{figure}
+
+The Nose-Hoover energy function is plotted over $50,000$ timesteps in Figure \ref{fig:NoseHoover}. It can be seen that the average value of the Nose-Hoover energy function is constant, albeit with fluctuations around the mean value due to the dynamics of the Nose-Hoover thermostat.
  
 \subsubsection{Partial Radial Distributions}
 
@@ -125,7 +138,7 @@ where $g_{AB}(r)$ corresponds to the number of particles of type `$B$' located a
 \begin{figure}[h]
     \centering
     \includegraphics[scale=0.3]{../figures/PRDF_Q2.png}
-    \caption{The partial radial distribution function is tested in the case when $A$ and $B$B are identical. \label{fig:PRDFTest}}
+    \caption{The partial radial distribution function is tested in the case when $A$ and $B$ are identical. \label{fig:PRDFTest}}
 \end{figure}
 
 Figure \ref{fig:PRDFTest} shows the result for the case in which species $A$ and $B$ are argon, compared with the radial distribution function generated from the original Pymold code. It can be seen that the partial distribution function generated follows closely to the RDF generated with the original pymold code.
@@ -153,15 +166,15 @@ D = \frac{1}{3} \int_{0}^{\infty}C(t)dt.
     \caption{The velocity autocorrelation function is plotted for argon. It can be seen that the VACF does not converge to zero. \label{fig:VACFTest}}
 \end{figure}
 
-However, from Figure \ref{fig:VACFTest} it can be seen that the velocity autocorrelation function does not tend towards zero as the number of time-steps increases, instead fluctuating randomly around zero. This is likely due to the finite number of particles in the system, with the . Therefore, \ref{eqn:D1} cannot be used to determine the self-diffusion coefficient, as summing the autocorrelation at each step will produce a `random walk' effect, causing the value for $D$ to diverge from the true value.
+However, from Figure \ref{fig:VACFTest} it can be seen that the velocity autocorrelation function does not tend towards zero as the number of time-steps increases, instead fluctuating randomly around zero. This is likely due to the finite number of particles in the system, with the . Therefore, \ref{eqn:D1} cannot be used to determine the self-diffusion coefficient, as summing the autocorrelation at each step will produce a `random walk' effect, causing the value for $D$ to diverge from the true value. Therefore, the velocity autocorrelation function will not be used to determine the self-diffusion constant.
 
 The self-diffusion constant can also be obtained through the relation 
-
 \begin{equation}
+\label{eqn:D2}
 \frac{\partial <r^2>}{\partial t} = 6D,
 \end{equation}
-
 where $<r^2>$ is the mean square displacement.
+
 
 In \cite{StructureAndDiffusion}, the coefficient of mutual diffusion is expressed as
 
@@ -179,22 +192,48 @@ D_{12} \approx c_2 D_1 + c_1 D_2.
 
 \section{Results}
 
-The partial radial distribution functions and self-diffusion coefficients were investigated for an argon-krypton mixture, using the same initial conditions as in \cite{StructureAndDiffusion}. The starting conditions involved an initial temperature of $115.8\,$K and a number density of $0.017614\,\rm{\r{A}}^{-3}$.
+The partial radial distribution functions and self-diffusion coefficients were investigated for an argon-krypton mixture, using the same initial conditions as in \cite{StructureAndDiffusion}. The starting conditions involved an initial temperature of $115.8\,$K and a number density of $0.017614\,\rm{\r{A}}^{-3}$. This was done for mixture ratios of $25\%$, $50\%$ and $75\%$, for systems containing 256 and 500 atoms.
 Given that there are 4 atoms in the primitive cell in the initial state of the system in pymold, this requires that the length of the primitive cell be $6.1010\,\rm{\r{A}}$.
 
+Before conducting the simulation, it is important to determine the appropriate number of timesteps in order gain sufficient data in order to make accurate measurements without excessive run times.
+
+
+The results obtained in \cite{StructureAndDiffusion} are listed in Table \ref{table:comparisonResults}. These will be compared to the calculated values generated from the extended version of pymold.
 
 \begin{table}[h!t]
 \centering
-\caption{ The results listed in \cite{StructureAndDiffusion} for a mixture of argon and krypton. From left to right: $c_1$, the fraction of particles in the mixture of type `1' (i.e. argon); $D_{12}$, the coefficient of mutual diffusion for the mixture at the given concentrations; $D_{1}$ and $D_2$, the extrapolated coefficients of self-diffusion for argon and krypton, respectively.}
+\caption{ The results listed in \cite{StructureAndDiffusion} for a mixture of argon and krypton. From left to right: $c_1$, the fraction of particles in the mixture of type `1' (i.e. argon); $D_{12}$, the coefficient of mutual diffusion for the mixture at the given concentrations; $D_{1}$ and $D_2$, the coefficients of self-diffusion for argon and krypton, respectively. \label{table:comparisonResults}}
 \begin{tabular}{|c|c|c|c|} 
 \hline
 $c_1$ & $D_{12}$ & $D_1$ & $D_2$\\\hline
- & \multicolumn{3}{|c|}{($10^{-5}\,\rm{cm}^2\rm{s}^{-1}$)}\\\hline
+& \multicolumn{3}{|c|}{($10^{-5}\,\rm{cm}^2\rm{s}^{-1}$)}\\\hline
 $0.25$ & $2.3$ & $2.12$ & $1.79$\\
 $0.5$ & $2.8$ & $3.01$ & $2.40$\\
 $0.75$ & $3.0$ & $3.91$ & $3.25$\\\hline
 \end{tabular}
 \end{table} 
+
+\begin{table}[h!t]
+\centering
+\caption{ The parameters obtained for the linear fitting of the mean square displacement, and the diffusion coefficients calculated from this using Equation \ref{eqn:D2}. From left to right: $c_1$, the concentration of argon atoms in the mixture; $N$, the number of particles in the system; $m_{12}$,$m_{1}$ and $m_{2}$, the gradients of the fitted mean square displacements; $D_{12}$, the mutual diffusion coefficient; $D_{1}$ and $D_{2}$, the self-diffusion coefficients for argon and krypton, respectively. \label{table:results} }
+%
+\begin{tabular}{|c|c|c|c|c|c|c|c|} 
+\hline
+$c_1$ & $N$  & $m_{12}$ & $m_1$ & $m_2$ & $D_{12}$ & $D_{1}$ & $D_{2}$\\\hline
+\multicolumn{2}{|c|}{} & \multicolumn{3}{|c|}{$(\rm{\r{A}}^2ps^{-1})$}& \multicolumn{3}{|c|}{($10^{-5}\,\rm{cm}^2\rm{s}^{-1}$)}\\\hline
+$0.25$ & $256$  & $13.86\pm0.01$ & $14.23\pm0.01$ & $13.73\pm0.01$ & $2.309\pm0.002$ & $2.371\pm0.002$ & $2.289\pm0.002$ \\
+$0.5$ & $256$ & $14.39\pm0.01$ & $14.23\pm0.01$ & $14.54\pm0.01$ & $2.398\pm0.002$ & $2.372\pm0.002$ & $2.423\pm0.002$\\
+$0.75$ & $256$ & $12.811\pm0.005$ & $13.099\pm0.006$ & $11.948\pm0.024$ & $2.135\pm0.001$ & $2.183\pm0.001$ & $1.991\pm0.004$\\
+$0.25$ & $500$	 \\
+$0.5$ & $500$ \\
+$0.75$ & $500$ \\
+\end{tabular}
+\end{table} 
+
+From Table \ref{table:results}, it can be seen that, while the results are within an order of unity of the expected results, the values calculated are several standard deviations out. 
+
+\section{Conclusions}
+
 
 
 \bibliographystyle{unsrt}
